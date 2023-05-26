@@ -1,0 +1,28 @@
+{
+  "name": "xml-parser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "prebuild": "rm -rf dist",
+    "build": "esbuild index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outfile=dist/index.js",
+    "postbuild": "cd dist && zip -r index.zip index.js*",
+    "test-remote": "base64 testPayload.json > encodedTestPayload && aws lambda invoke --function-name sendToDiscordAPI --payload file://encodedTestPayload --no-cli-auto-prompt  test-output.txt && cat test-output.txt | cut -c -500",
+    "upload": "npm run build && aws lambda update-function-code --no-cli-auto-prompt --function-name sendToDiscordAPI --zip-file fileb://dist/index.zip && sleep 10s && npm run test-remote",
+    "view": "jq \".\" test-output.txt | less"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.1",
+    "@types/node": "^18.16.2",
+    "esbuild": "^0.17.18",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.4"
+  }
+}
