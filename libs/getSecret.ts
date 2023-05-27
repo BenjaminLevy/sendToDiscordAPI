@@ -18,7 +18,12 @@ const getSecret = async (secretName: string) => {
   }
 
   const secretContent = (await response.json()) as { SecretString: string };
-  return secretContent.SecretString;
+  return parseDiscordTokenFromSecretsObject(secretContent.SecretString)
 };
 
+const parseDiscordTokenFromSecretsObject = (SecretsString:string) => {
+  const secretsObject = JSON.parse(SecretsString)
+  const discordToken = secretsObject.discordToken
+  return `Bot ${discordToken}`
+}
 export default getSecret
