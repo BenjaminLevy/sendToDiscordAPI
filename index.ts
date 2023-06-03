@@ -3,13 +3,15 @@ import {
   SQSClient,
 } from "@aws-sdk/client-sqs";
 import { backOff, BackoffOptions } from "exponential-backoff";
-import {SQSEvent} from 'aws-lambda'
+import {SQSEvent, SQSRecord} from 'aws-lambda'
 import fetch from 'node-fetch'
 import getSecret from './libs/getSecret'
-exports.handler = async (event: SQSEvent, context, callback) => {
-  const body = event.Records[0].body
 
-  const discordChannel = JSON.parse(body).channel
+exports.handler = async (event, context, callback) => {
+  const record: SQSRecord = event.Records[0]
+  const discordChannel = record.messageAttributes.channel.stringValue
+  // const body = record.body
+  // const embeds = JSON.parse(body)
   const discordToken = await getSecret('production')
   const url = `https://discord.com/api/v10/channels/${discordChannel}/messages`
   const backoffOptions: BackoffOptions = {
@@ -18,25 +20,32 @@ exports.handler = async (event: SQSEvent, context, callback) => {
     delayFirstAttempt: false,
     startingDelay: 2000
   } // options explained: https://www.npmjs.com/package/exponential-backoff
-
   const response = await backOff(()=>
     fetch(url, {
 	method: 'post',
-	body: JSON.parse(body).embeds,
+	body: JSON.stringify(body),
 	headers: {
           'Content-Type': 'application/json',
           'Authorization': discordToken
         }
-     }),
-    backoffOptions
+     })
   )
-  if([401,403,404].includes(response.status)){
+  throw new HTTPResponseError(response)
+  // response headers do not appear when "response" object is console logged directly.
+  // this circumvents that
+  const headerObj = {}
+  for(const header of response.headers){
+    headerObj[header[0]] = header[1]
+  }
+  console.log(headerObj)
+
+  if([400, 401,403,404].includes(response.status)){
     throw new HTTPResponseError(response)
   } // see "Invalid Request Limit aka Cloudflare bans" https://discord.com/developers/docs/topics/rate-limits
 
   const client = new SQSClient({});
   const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
-  const recieptHandle = event.Records[0].receiptHandle
+  const recieptHandle = record.receiptHandle
 
   if([200,201,204].includes(response.status)){
         await client.send(
@@ -47,11 +56,6 @@ exports.handler = async (event: SQSEvent, context, callback) => {
         )
   } // all three of these codes indicate success https://discord.com/developers/docs/topics/opcodes-and-status-codes#http
 
-  const headerObj = {}
-  for(const header of response.headers){
-    headerObj[header[0]] = header[1]
-  }
-  console.log(headerObj)
   return {status: response.status, statusText: response.statusText}
 }
 
