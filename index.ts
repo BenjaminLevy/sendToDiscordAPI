@@ -9,9 +9,15 @@ import getSecret from './libs/getSecret'
 
 exports.handler = async (event, context, callback) => {
   const record: SQSRecord = event.Records[0]
-  const discordChannel = "1100818369000767568" //record.messageAttributes.channel.stringValue
-  const body = record.body
-  // const embeds = JSON.parse(body)
+  const discordChannel = record.messageAttributes.channel.stringValue
+  let body = record.body
+  console.log({recordBody: body})
+  // Be CAREFUL modifying the parsing/stringification here -- very finicky 
+  let bodyStringified = JSON.stringify(body)
+  console.log({bodyStringified: bodyStringified})
+  let bodyParsed = JSON.parse(body)
+  console.log({bodyParsed: bodyParsed})
+  console.log({bodyParsedEmbeds: bodyParsed.embeds})
   const discordToken = await getSecret('production')
   const url = `https://discord.com/api/v10/channels/${discordChannel}/messages`
   const backoffOptions: BackoffOptions = {
@@ -23,15 +29,17 @@ exports.handler = async (event, context, callback) => {
   const response = await backOff(()=>
     fetch(url, {
 	method: 'post',
-	body: JSON.stringify(body), //JSON.stringify(body),
+	body: JSON.stringify({embeds: bodyParsed.embeds}),
 	headers: {
           'Content-Type': 'application/json',
           'Authorization': discordToken
         }
-     })
+     }),
+    backoffOptions
   )
   // response headers do not appear when "response" object is console logged directly.
-  // this circumvents that
+  // this circumvents that. todo: see if response.json would make this unecessary Stringified
+  // https://github.com/node-fetch/node-fetch/blob/main/README.md#simple-post
   const headerObj = {}
   for(const header of response.headers){
     headerObj[header[0]] = header[1]
@@ -55,12 +63,14 @@ exports.handler = async (event, context, callback) => {
         )
   } // all three of these codes indicate success https://discord.com/developers/docs/topics/opcodes-and-status-codes#http
 
-  return {status: response.status, statusText: response.statusText}
+  let completionMessage = {status: response.status, statusText: response.statusText}
+  console.log(completionMessage)
+  return completionMessage
 }
 
 class HTTPResponseError extends Error {
 	constructor(response) {
-		super(`HTTP Error Response: ${response.status} ${response.statusText}`);
+		super(`HTTP Error Response: ${response.status} ${response.statusText}, ${response.headers}, ${response.type}, ${response.url}`);
 	}
 }
 
